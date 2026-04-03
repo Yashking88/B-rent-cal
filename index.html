@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="C-RENT: A simple monthly billing calculator for multi-tenant properties. Calculate rent, electricity, and shared water bills efficiently." />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="color-scheme" content="light" />
+    <meta property="og:title" content="C-RENT Monthly Calculator" />
+    <meta property="og:description" content="Simple billing calculator for rental properties with multiple tenants." />
+    <meta property="og:type" content="website" />
+    <title>C-RENT Monthly Calculator</title>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            boxShadow: {
+              soft: "0 8px 30px rgba(0,0,0,0.08)",
+            },
+          },
+        },
+      };
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDK - Using compat version for global firebase object -->
+    <script async src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script async src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script async src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <style>
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      .paid-transition {
+        transition: background-color 0.5s ease, border-color 0.5s ease, color 0.5s ease;
+        background-color: #dcfce7 !important;
+        border-color: #bbf7d0 !important;
+      }
+      *:focus-visible {
+        outline-width: 2px;
+        outline-style: solid;
+        outline-offset: 2px;
+      }
+      input[type="email"]:focus-visible,
+      input[type="password"]:focus-visible,
+      input[type="month"]:focus-visible,
+      input[type="number"]:focus-visible,
+      input[type="date"]:focus-visible,
+      textarea:focus-visible {
+        outline: none;
+      }
+    </style>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75' font-weight='bold' fill='%230f172a'>C</text></svg>" />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect fill='%230f172a' width='180' height='180' rx='40'/><text x='90' y='130' font-size='100' font-weight='bold' fill='white' text-anchor='middle'>C</text></svg>" />
+  </head>
+  <body class="bg-gradient-to-br from-slate-50 via-sky-50 to-indigo-50 text-slate-900">
+    <!-- Signup Modal -->
+    <div
+      id="signupModal"
+      class="fixed inset-0 bg-black/60 flex items-center justify-center z-[200]"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Signup modal"
+    >
+      <div class="bg-white rounded-2xl p-6 shadow-soft max-w-md w-[90%]">
+        <h2 class="text-xl font-semibold mb-2">Create Account</h2>
+        <p class="text-sm text-slate-600 mb-4">Sign up for cloud data sync</p>
+        
+        <div id="signupContent" class="space-y-3">
+          <div>
+            <label for="signupEmail" class="block text-xs font-medium text-slate-700 mb-1">Email Address</label>
+            <input
+              id="signupEmail"
+              type="email"
+              placeholder="your@email.com"
+              class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              required
+              aria-required="true"
+            />
+          </div>
+          <div>
+            <label for="signupPassword" class="block text-xs font-medium text-slate-700 mb-1">Password (min 6 chars)</label>
+            <input
+              id="signupPassword"
+              type="password"
+              placeholder="Password"
+              class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              required
+              aria-required="true"
+            />
+          </div>
+          <div id="signupError" class="text-xs text-red-600 hidden" role="alert"></div>
+          <button
+            id="signupBtn"
+            class="w-full px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition"
+            type="button"
+          >
+            Sign Up
+          </button>
+          <button
+            id="signupToSigninBtn"
+            class="w-full px-4 py-2 rounded-lg text-sm font-medium bg-slate-200 text-slate-800 hover:bg-slate-300 transition"
+            type="button"
+          >
+            Already have account? Sign In
+          </button>
+        </div>
+        
+        <div id="signupLoading" class="hidden text-center">
+          <div class="text-sm text-slate-600">Creating account...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Signin Modal -->
+    <div
+      id="signinModal"
+      class="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Signin modal"
+    >
+      <div class="bg-white rounded-2xl p-6 shadow-soft max-w-md w-[90%]">
+        <h2 class="text-xl font-semibold mb-2">C-RENT Cloud Sync</h2>
+        <p class="text-sm text-slate-600 mb-4">Sign in to sync data across devices</p>
+        
+        <div id="signinContent" class="space-y-3">
+          <div>
+            <label for="signinEmail" class="block text-xs font-medium text-slate-700 mb-1">Email Address</label>
+            <input
+              id="signinEmail"
+              type="email"
+              placeholder="your@email.com"
+              class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              required
+              aria-required="true"
+            />
+          </div>
+          <div>
+            <label for="signinPassword" class="block text-xs font-medium text-slate-700 mb-1">Password</label>
+            <input
+              id="signinPassword"
+              type="password"
+              placeholder="Password"
+              class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              required
+              aria-required="true"
+            />
+          </div>
+          <div id="signinError" class="text-xs text-red-600 hidden" role="alert"></div>
+          <button
+            id="signinBtn"
+            class="w-full px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition"
+            type="button"
+          >
+            Sign In
+          </button>
+          <button
+            id="signinGuestBtn"
+            class="w-full px-4 py-2 rounded-lg text-sm font-medium bg-slate-200 text-slate-800 hover:bg-slate-300 transition"
+            type="button"
+          >
+            Continue as Guest (Local Only)
+          </button>
+          <button
+            id="signinToSignupBtn"
+            class="w-full px-4 py-2 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-800 transition"
+            type="button"
+          >
+            Need an account? Sign Up
+          </button>
+        </div>
+        
+        <div id="signinLoading" class="hidden text-center">
+          <div class="text-sm text-slate-600">Signing in...</div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="syncStatus"
+      class="fixed top-4 right-4 bg-slate-900 text-white px-3 py-2 rounded-full text-xs shadow-soft z-50 flex items-center gap-2"
+    >
+      <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+      <span id="syncStatusText">Syncing...</span>
+    </div>
+
+    <header class="sticky top-0 z-50">
+      <div class="bg-white/80 backdrop-blur border-b border-slate-200">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+          <div class="flex items-center gap-2">
+            <div class="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-lg shadow-soft" aria-label="C-RENT app icon">C</div>
+            <div class="font-semibold tracking-wide text-slate-900">C-RENT</div>
+          </div>
+
+          <div class="flex-1 flex justify-center">
+            <div class="flex items-center gap-2">
+              <label for="monthSelect" class="text-sm text-slate-600 font-medium">Month</label>
+              <input
+                id="monthSelect"
+                type="month"
+                class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                aria-label="Select billing month"
+              />
+            </div>
+          </div>
+
+          <nav class="flex gap-2" role="navigation" aria-label="Main navigation">
+            <button
+              id="navCalculator"
+              data-page="calculator"
+              class="px-4 py-2 rounded-lg text-sm font-medium bg-slate-900 text-white shadow-soft hover:bg-slate-800 transition"
+              aria-pressed="true"
+              aria-label="Go to Calculator"
+            >
+              Calculator
+            </button>
+            <button
+              id="navDashboard"
+              data-page="dashboard"
+              class="px-4 py-2 rounded-lg text-sm font-medium bg-white border border-slate-300 text-slate-800 hover:bg-slate-50 transition"
+              aria-pressed="false"
+              aria-label="Go to Dashboard"
+            >
+              Dashboard
+            </button>
+            <button
+              id="navReset"
+              data-page="reset"
+              class="px-4 py-2 rounded-lg text-sm font-medium bg-white border border-slate-300 text-slate-800 hover:bg-slate-50 transition"
+              type="button"
+              aria-pressed="false"
+              aria-label="Go to Reset"
+            >
+              Reset
+            </button>
+            <div class="relative">
+              <button
+                id="userMenuBtn"
+                class="px-3 py-2 rounded-lg text-sm font-medium bg-white border border-slate-300 text-slate-800 hover:bg-slate-50 transition"
+                type="button"
+                aria-expanded="false"
+                aria-haspopup="menu"
+                aria-label="User menu"
+              >
+                👤
+              </button>
+              <div
+                id="userMenu"
+                class="hidden absolute right-0 mt-1 w-48 bg-white border border-slate-300 rounded-lg shadow-soft z-40"
+                role="menu"
+              >
+                <div id="userMenuContent" class="p-3 space-y-2 text-sm">
+                  <div id="userEmail" class="text-slate-700 font-medium text-xs truncate" role="status"></div>
+                  <button
+                    id="logoutBtn"
+                    class="w-full px-3 py-1.5 rounded-lg text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 transition"
+                    type="button"
+                    role="menuitem"
+                  >
+                    Logout
+                  </button>
+                </div>
+              </div>
+            </div>
+          </nav>
+        </div>
+      </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-6" role="main" id="main-content">
+      <div id="page-calculator" class="space-y-6">
+        <section class="bg-gradient-to-br from-white via-slate-50 to-indigo-50 rounded-2xl border border-slate-200 shadow-soft p-5">
+          <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div class="space-y-2">
+              <h2 class="text-lg font-semibold">Billing Engine</h2>
+              <p class="text-sm text-slate-600">
+                Computes each tenant’s monthly dues using fixed electricity rate (12 INR/unit) and shared common charges.
+              </p>
+              <div class="text-xs text-slate-500">
+                Electricity Rate: <span class="font-semibold">12 INR/unit</span>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap gap-2 items-center">
+              <button
+                id="calcResetBtn"
+                class="px-4 py-2 rounded-lg text-sm font-medium bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                type="button"
+              >
+                Reset Inputs
+              </button>
+              <button
+                id="saveBillsBtn"
+                class="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-soft"
+                type="button"
+              >
+                Save Bills & Move to Dashboard
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="p-4 rounded-xl border border-slate-200 bg-slate-50">
+              <div class="flex items-center gap-2 justify-between">
+                <h3 class="font-semibold">Global Common Inputs</h3>
+                <div class="text-xs text-slate-600">
+                  Occupied Rooms: <span id="occupiedCount" class="font-semibold">0</span>
+                </div>
+              </div>
+
+              <div class="mt-3">
+                <label class="text-sm font-medium text-slate-700" for="commonBillInput"
+                  >Total Water Bill</label
+                >
+                <input
+                  id="commonBillInput"
+                  type="number"
+                  inputmode="decimal"
+                  min="0"
+                  step="1"
+                  class="mt-2 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              <div class="mt-3 text-xs text-slate-500">
+                Water charge per occupied room = Total Water Bill / Number of Occupied Rooms
+              </div>
+            </div>
+
+            <div class="p-4 rounded-xl border border-slate-200 bg-slate-50">
+              <h3 class="font-semibold">Room Occupancy (Common Sharing)</h3>
+              <div class="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2" id="occupiedCheckboxes">
+                <!-- populated by JS -->
+              </div>
+              <div class="mt-3 text-xs text-slate-500">
+                Vacant rooms won’t receive a shared common charge.
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-5">
+            <h3 class="font-semibold mb-3">Previous Calculations (This Month)</h3>
+            <div id="calcHistory" class="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between"></div>
+          </div>
+        </section>
+
+        <section class="bg-gradient-to-br from-white via-emerald-50/40 to-white rounded-2xl border border-slate-200 shadow-soft p-5">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <h2 class="text-lg font-semibold">Tenant Bills (11 Rooms)</h2>
+            <button
+              id="recalcBtn"
+              class="px-4 py-2 rounded-lg text-sm font-medium bg-slate-900 text-white hover:bg-slate-800 transition"
+              type="button"
+            >
+              Calculate Bills
+            </button>
+          </div>
+          <div id="calculator-tenants" class="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </section>
+      </div>
+
+      <div id="page-dashboard" class="hidden space-y-6">
+        <section class="bg-gradient-to-br from-white via-rose-50/40 to-white rounded-2xl border border-slate-200 shadow-soft p-5">
+          <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div class="space-y-2">
+              <h2 class="text-lg font-semibold">Dashboard (Payments)</h2>
+              <p class="text-sm text-slate-600">
+                Track fully-paid and partial payments per component. Remaining balance updates instantly.
+              </p>
+            </div>
+
+            <div class="flex flex-wrap gap-2 items-center">
+              <button
+                id="tabAll"
+                data-tab="all"
+                class="px-4 py-2 rounded-lg text-sm font-medium bg-slate-900 text-white hover:bg-slate-800 transition"
+                type="button"
+              >
+                All / Fully Paid
+              </button>
+              <button
+                id="tabPending"
+                data-tab="pending"
+                class="px-4 py-2 rounded-lg text-sm font-medium bg-white border border-slate-300 text-slate-800 hover:bg-slate-50 transition"
+                type="button"
+              >
+                Pending (Unpaid)
+              </button>
+              <button
+                id="tabPartial"
+                data-tab="partial"
+                class="px-4 py-2 rounded-lg text-sm font-medium bg-white border border-slate-300 text-slate-800 hover:bg-slate-50 transition"
+                type="button"
+              >
+                Partially Paid
+              </button>
+            </div>
+          </div>
+
+          <div id="dashboardMeta" class="mt-4 p-3 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-700">
+            <!-- populated by JS -->
+          </div>
+        </section>
+
+        <section class="bg-gradient-to-br from-white via-sky-50/40 to-white rounded-2xl border border-slate-200 shadow-soft p-5">
+          <h2 class="text-lg font-semibold">Tenants</h2>
+          <div id="dashboard-tenants" class="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </section>
+      </div>
+
+      <div id="page-reset" class="hidden space-y-6">
+        <section class="bg-gradient-to-br from-rose-50 via-white to-indigo-50 rounded-2xl border border-rose-200 shadow-soft p-5">
+          <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div class="space-y-2">
+              <h2 class="text-lg font-semibold">Reset Payments</h2>
+              <p class="text-sm text-slate-600">
+                Clears all paid/pending/partial payment component checkboxes for the currently selected month.
+              </p>
+              <div id="resetMeta" class="text-xs text-slate-500"></div>
+            </div>
+
+            <div class="flex flex-wrap gap-2 items-center">
+              <button
+                id="resetPaymentsBtn"
+                class="px-4 py-2 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition shadow-soft"
+                type="button"
+              >
+                Reset Payment Status
+              </button>
+              <button
+                id="resetAllBtn"
+                class="px-4 py-2 rounded-lg text-sm font-medium bg-rose-600 text-white hover:bg-rose-700 transition shadow-soft"
+                type="button"
+              >
+                Reset Everything (Month Data)
+              </button>
+              <button
+                id="downloadBackupBtn"
+                class="px-4 py-2 rounded-lg text-sm font-medium bg-slate-900 text-white hover:bg-slate-800 transition shadow-soft"
+                type="button"
+              >
+                Download Backup (.txt)
+              </button>
+              <button
+                id="restoreBackupBtn"
+                class="px-4 py-2 rounded-lg text-sm font-medium bg-white border border-slate-300 text-slate-800 hover:bg-slate-50 transition"
+                type="button"
+              >
+                Restore from File
+              </button>
+              <input id="restoreFileInput" type="file" accept=".txt" class="hidden" />
+            </div>
+          </div>
+        </section>
+
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-soft p-5">
+          <h3 class="text-base font-semibold">What gets reset?</h3>
+          <ul class="mt-3 space-y-2 text-sm text-slate-700 list-disc pl-5">
+            <li>Room Rent Paid</li>
+            <li>Electricity Paid</li>
+          </ul>
+          <div class="mt-3 text-xs text-slate-500">
+            Bills (rent/electricity calculations) remain saved. Only payment component flags are cleared.
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Toast notification -->
+    <div
+      id="toast"
+      class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-4 py-2 rounded-full text-sm shadow-soft hidden"
+      role="status"
+      aria-live="polite"
+    >
+      Copied to clipboard
+    </div>
+
+    <script defer src="./app.js"></script>
+  </body>
+</html>
+
